@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Test coverage
+node_modules/
+.next/
+out/
+coverage/
+.coverage
+
+# Docker
+*.log
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
