@@ -128,11 +128,20 @@ class MissionStateManager:
 
         self.mission_repo.update(mission_id, updates)
 
+        feed_meta = {
+            "from_state": previous_state,
+            "to_state": new_state.value,
+            "current_stage": new_state.value,
+            "agent_responsible": "System",
+        }
+        if metadata:
+            feed_meta.update(metadata)
+
         self.feed_repo.add_entry(
             mission_id=mission_id,
             event_type=EventType.MISSION_STATE_CHANGED.value,
             message=message,
-            metadata_json=metadata or {"from_state": previous_state, "to_state": new_state.value},
+            metadata_json=feed_meta,
         )
 
         if self.event_bus:

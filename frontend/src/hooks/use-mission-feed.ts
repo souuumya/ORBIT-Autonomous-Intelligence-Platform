@@ -84,20 +84,44 @@ export function useMissionFeed(initialMissionId: string | null = null) {
   // Derive status from feed entries
   const deriveMissionStatus = (entries: FeedEntryItem[], currentStatus: MissionStatusType): MissionStatusType => {
     if (entries.length === 0) return currentStatus;
-    const lastEntry = entries[entries.length - 1];
-    const stage = (lastEntry.current_stage || '').toUpperCase();
-    if (stage.includes('COMPLETED') || lastEntry.event_type === 'MissionCompleted') return 'COMPLETED';
-    if (stage.includes('FAILED') || lastEntry.event_type === 'MissionFailed') return 'FAILED';
-    if (stage.includes('CANCELLED') || lastEntry.event_type === 'MissionCancelled') return 'CANCELLED';
-    if (stage.includes('REVIEW')) return 'REVIEWING';
-    if (stage.includes('CREAT')) return 'CREATING';
-    if (stage.includes('DECISION')) return 'CREATING';
-    if (stage.includes('RESEARCH')) return 'RESEARCHING';
-    if (stage.includes('PLAN')) return 'PLANNING';
+
+    // Check if completion, failure, or cancellation occurred anywhere in the feed
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      const stage = (entry.current_stage || '').toUpperCase();
+      const eventType = entry.event_type || '';
+      const toState = (entry.metadata?.to_state || '').toString().toUpperCase();
+
+      if (stage.includes('COMPLETED') || eventType === 'MissionCompleted' || toState === 'COMPLETED') {
+        return 'COMPLETED';
+      }
+      if (stage.includes('FAILED') || eventType === 'MissionFailed' || toState === 'FAILED') {
+        return 'FAILED';
+      }
+      if (stage.includes('CANCELLED') || eventType === 'MissionCancelled' || toState === 'CANCELLED') {
+        return 'CANCELLED';
+      }
+    }
+
+    // Determine current active stage from the latest meaningful entry
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      const stage = (entry.current_stage || '').toUpperCase();
+      const toState = (entry.metadata?.to_state || '').toString().toUpperCase();
+
+      const effectiveStage = stage !== 'INITIALIZED' && stage ? stage : toState;
+
+      if (effectiveStage.includes('REVIEW')) return 'REVIEWING';
+      if (effectiveStage.includes('CREAT')) return 'CREATING';
+      if (effectiveStage.includes('DECISION')) return 'CREATING';
+      if (effectiveStage.includes('RESEARCH')) return 'RESEARCHING';
+      if (effectiveStage.includes('PLAN')) return 'PLANNING';
+    }
+
     return 'INITIALIZED';
   };
 
-  // Derive agent nodes state strictly from feed entries
+  // Derive agent nodes state strictly from feed entries and mission status
   const deriveAgentNodes = (entries: FeedEntryItem[], missionStatus: MissionStatusType): AgentNode[] => {
     if (entries.length === 0) {
       return BASE_AGENT_NODES.map((node, idx) => ({
@@ -106,64 +130,62 @@ export function useMissionFeed(initialMissionId: string | null = null) {
       }));
     }
 
-    const latestEntry = entries[entries.length - 1];
     const isFinished = missionStatus === 'COMPLETED';
     const isFailed = missionStatus === 'FAILED';
+    const stageOrder = ['orchestrator', 'planner', 'research', 'decision', 'creator', 'reviewer', 'engine'];
 
-    const getAgentStatus = (role: string): 'idle' | 'active' | 'completed' | 'failed' => {
-      const roleLower = role.toLowerCase();
-
-      const matchingEntries = entries.filter((e) => {
+    let activeIndex = 0;
+    if (isFinished) {
+      activeIndex = 6;
+    } else {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const e = entries[i];
         const resp = (e.agent_responsible || '').toLowerCase();
         const stage = (e.current_stage || '').toLowerCase();
-        if (roleLower === 'orchestrator' || roleLower === 'mission core') {
-          return resp.includes('system') || stage.includes('init');
-        }
-        if (roleLower === 'planner') return resp.includes('planner') || stage.includes('plan');
-        if (roleLower === 'research') return resp.includes('research') || stage.includes('research');
-        if (roleLower === 'decision') return resp.includes('decision') || stage.includes('decision');
-        if (roleLower === 'creator') return resp.includes('creator') || stage.includes('creat');
-        if (roleLower === 'reviewer') return resp.includes('reviewer') || stage.includes('review');
-        if (roleLower === 'engine' || roleLower === 'memory') {
-          return resp.includes('reflection') || resp.includes('memory') || stage.includes('reflection') || (stage.includes('completed') && e.reflection);
-        }
-        return false;
-      });
+        const toState = (e.metadata?.to_state || '').toString().toLowerCase();
+        const combined = `${resp} ${stage} ${toState}`;
 
-      if (matchingEntries.length > 0) {
-        const lastMatching = matchingEntries[matchingEntries.length - 1];
-        if (isFinished) return 'completed';
-        if (isFailed && lastMatching.id === latestEntry.id) return 'failed';
-        if (lastMatching.id === latestEntry.id && !isFinished) return 'active';
-        return 'completed';
+        if (combined.includes('reflection') || combined.includes('memory') || combined.includes('completed')) {
+          activeIndex = 6;
+          break;
+        } else if (combined.includes('reviewer') || combined.includes('review')) {
+          activeIndex = 5;
+          break;
+        } else if (combined.includes('creator') || combined.includes('creat')) {
+          activeIndex = 4;
+          break;
+        } else if (combined.includes('decision')) {
+          activeIndex = 3;
+          break;
+        } else if (combined.includes('research')) {
+          activeIndex = 2;
+          break;
+        } else if (combined.includes('planner') || combined.includes('plan')) {
+          activeIndex = 1;
+          break;
+        }
       }
-
-      const stageOrder = ['orchestrator', 'planner', 'research', 'decision', 'creator', 'reviewer', 'engine'];
-      const activeResp = (latestEntry.agent_responsible || '').toLowerCase();
-      const activeStage = (latestEntry.current_stage || '').toLowerCase();
-
-      let activeIndex = 0;
-      if (activeResp.includes('planner') || activeStage.includes('plan')) activeIndex = 1;
-      else if (activeResp.includes('research') || activeStage.includes('research')) activeIndex = 2;
-      else if (activeResp.includes('decision') || activeStage.includes('decision')) activeIndex = 3;
-      else if (activeResp.includes('creator') || activeStage.includes('creat')) activeIndex = 4;
-      else if (activeResp.includes('reviewer') || activeStage.includes('review')) activeIndex = 5;
-      else if (activeResp.includes('reflection') || activeResp.includes('memory') || activeStage.includes('reflection') || activeStage.includes('completed')) activeIndex = 6;
-
-      const myIndex = stageOrder.indexOf(roleLower === 'memory' ? 'engine' : roleLower);
-
-      if (isFinished) return 'completed';
-      if (myIndex < activeIndex) return 'completed';
-      if (myIndex === activeIndex) return 'active';
-      return 'idle';
-    };
+    }
 
     return BASE_AGENT_NODES.map((node) => {
-      const status = getAgentStatus(node.role);
+      const roleLower = node.role.toLowerCase() === 'memory' ? 'engine' : node.role.toLowerCase();
+      const myIndex = stageOrder.indexOf(roleLower);
 
-      // Duration is only set if calculated from actual entry timestamps
+      let status: 'idle' | 'active' | 'completed' | 'failed' = 'idle';
+
+      if (isFinished) {
+        status = 'completed';
+      } else if (isFailed) {
+        if (myIndex < activeIndex) status = 'completed';
+        else if (myIndex === activeIndex) status = 'failed';
+        else status = 'idle';
+      } else {
+        if (myIndex < activeIndex) status = 'completed';
+        else if (myIndex === activeIndex) status = 'active';
+        else status = 'idle';
+      }
+
       let durationMs: number | undefined;
-      const roleLower = node.role.toLowerCase();
       const matchingEntries = entries.filter((e) => {
         const resp = (e.agent_responsible || '').toLowerCase();
         const stage = (e.current_stage || '').toLowerCase();

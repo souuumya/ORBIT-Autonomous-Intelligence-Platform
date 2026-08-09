@@ -27,6 +27,7 @@ export interface FeedEntryItem {
   reflection?: string;
   event_type: string;
   message?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MissionDetail {
