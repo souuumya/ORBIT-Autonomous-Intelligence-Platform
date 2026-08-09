@@ -57,13 +57,17 @@ class MissionStateManager:
             object.__setattr__(res, "_is_new", False)
             return res
 
+        from app.db.repositories import UserRepository
+        creator_user_id = request.created_by or "user-1"
+        UserRepository(self.db).ensure_user_exists(creator_user_id)
+
         mission_model = self.mission_repo.create({
             "title": request.title.strip(),
             "objective": request.objective.strip(),
             "description": request.description.strip() if request.description else "",
             "priority": request.priority if isinstance(request.priority, str) else request.priority.value,
             "context_json": request.context or {},
-            "created_by_user_id": request.created_by,
+            "created_by_user_id": creator_user_id,
             "status": MissionStatus.INITIALIZED.value,
             "current_phase": MissionStatus.INITIALIZED.value,
             "started_at": datetime.now(UTC),

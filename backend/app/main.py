@@ -5,12 +5,18 @@ from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import register_middlewares
-from app.db.session import Base, engine
+from app.db.session import Base, SessionLocal, engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        from app.db.repositories import UserRepository
+        UserRepository(db).ensure_user_exists("user-1")
+    finally:
+        db.close()
     yield
 
 

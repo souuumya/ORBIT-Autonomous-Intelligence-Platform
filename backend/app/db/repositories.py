@@ -17,6 +17,7 @@ from app.db.models import (
     StrategyModel,
     StrategyOptionModel,
     TaskModel,
+    UserModel,
 )
 
 
@@ -349,4 +350,38 @@ class DecisionReplayRepository:
             .order_by(DecisionReplayStepModel.step_number.asc())
             .all()
         )
+
+
+class UserRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def ensure_user_exists(self, user_id: str = "user-1") -> UserModel:
+        user = self.db.query(UserModel).filter(UserModel.id == user_id).first()
+        if user:
+            return user
+
+        email = f"{user_id}@orbit.system"
+        existing_by_email = self.db.query(UserModel).filter(
+            (UserModel.email == email) | (UserModel.username == user_id)
+        ).first()
+        if existing_by_email:
+            return existing_by_email
+
+        user = UserModel(
+            id=user_id,
+            email=email,
+            username=user_id,
+            full_name="System Default User",
+            role="system",
+            is_active=True,
+        )
+        self.db.add(user)
+        try:
+            self.db.commit()
+            self.db.refresh(user)
+        except Exception:
+            self.db.rollback()
+            user = self.db.query(UserModel).filter(UserModel.id == user_id).first()
+        return user
 
