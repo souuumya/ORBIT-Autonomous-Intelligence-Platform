@@ -101,35 +101,40 @@ type int = number;
 
 class ApiClient {
   private get baseUrl(): string {
-    return apiUrl.replace(/\/+$/, '');
+    let url = apiUrl.trim().replace(/\/+$/, '');
+    if (url.endsWith('/api')) {
+      url = url.slice(0, -4);
+    }
+    return url;
   }
 
   async checkHealth(): Promise<HealthCheckResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch {
+      // Fallback attempt
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         cache: 'no-store',
       });
-      if (!response.ok) {
-        throw new Error(`Health check failed with status ${response.status}`);
+      if (response.ok) {
+        return await response.json();
       }
-      return await response.json();
     } catch {
-      try {
-        const response = await fetch(`${this.baseUrl}/api/health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-        });
-        if (response.ok) {
-          return await response.json();
-        }
-      } catch {
-        // Fallback error
-      }
-      throw new Error('Backend health check unavailable');
+      // Fallback error
     }
+    throw new Error('Backend health check unavailable');
   }
 
   async initMission(payload: MissionInitPayload): Promise<MissionInitResponse> {

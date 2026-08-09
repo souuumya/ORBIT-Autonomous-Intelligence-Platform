@@ -429,11 +429,21 @@ export function useMissionFeed(initialMissionId: string | null = null) {
       return status;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Feed fetch failed';
-      setError(msg);
-      setSystemStatus((prev) => ({
-        ...prev,
-        connectionStatus: 'OFFLINE',
-      }));
+      if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(LOCAL_STORAGE_KEY_ID);
+          localStorage.removeItem(LOCAL_STORAGE_KEY_META);
+        }
+        setActiveMissionId(null);
+        setMission(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setSystemStatus((prev) => ({
+          ...prev,
+          connectionStatus: 'OFFLINE',
+        }));
+      }
       return 'FAILED' as MissionStatusType;
     }
   }, []);
